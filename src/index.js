@@ -1,51 +1,107 @@
-const { app, BrowserWindow } = require('electron');
-const path = require('node:path');
+const {
+  app,
+  BrowserWindow,
+  globalShortcut,
+  Notification,
+  clipboard,
+  nativeImage,
+  Tray,
+  Menu,
+} = require("electron");
+const path = require("node:path");
+const { keyboard, Key } = require("@nut-tree-fork/nut-js");
 
-// Handle creating/removing shortcuts on Windows when installing/uninstalling.
-if (require('electron-squirrel-startup')) {
+if (require("electron-squirrel-startup")) {
   app.quit();
 }
 
+const NOTIFICATION_TITLE = "Quick Shortcut!";
+const NOTIFICATION_BODY = 'Press "Cmd+Shift+M" to copy some text to MINE';
+
+let mainWindow = null;
+let popupWindow = null;
+let tray = null;
+
 const createWindow = () => {
-  // Create the browser window.
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 800,
     height: 600,
+    frame: true,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, "preload.js"),
     },
   });
 
-  // and load the index.html of the app.
-  mainWindow.loadFile(path.join(__dirname, 'index.html'));
-
-  // Open the DevTools.
-  mainWindow.webContents.openDevTools();
+  mainWindow.loadFile(path.join(__dirname, "index.html"));
 };
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
-app.whenReady().then(() => {
-  createWindow();
+const createPopupWindow = () => {
+  popupWindow = new BrowserWindow({
+    width: 400,
+    height: 200,
+    frame: true,
+    skipTaskbar: true,
+    focusable: true,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+    },
+  });
 
-  // On OS X it's common to re-create a window in the app when the
-  // dock icon is clicked and there are no other windows open.
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
+  popupWindow.loadFile(path.join(__dirname, "popup.html"));
+};
+
+function showNotification() {
+  new Notification({
+    title: NOTIFICATION_TITLE,
+    body: NOTIFICATION_BODY,
+  }).show();
+}
+
+app.whenReady().then(() => {
+  globalShortcut.register("CommandOrControl+Shift+M", async () => {
+    const modifier =
+      process.platform === "darwin" ? Key.LeftCmd : Key.LeftControl;
+
+    await keyboard.pressKey(modifier, Key.C);
+    await keyboard.releaseKey(modifier, Key.C);
+
+    if (popupWindow && !popupWindow.isDestroyed()) {
+      popupWindow.close();
     }
+
+    createPopupWindow();
+
+    popupWindow.webContents.on("did-finish-load", () => {
+      popupWindow.webContents.send("foo", clipboard.readText());
+    });
+
+    popupWindow.once("ready-to-show", () => {
+      popupWindow.show();
+      popupWindow.focus();
+    });
+  });
+
+  const iconData =
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAACTSURBVHgBpZKBCYAgEEV/TeAIjuIIbdQIuUGt0CS1gW1iZ2jIVaTnhw+Cvs8/OYDJA4Y8kR3ZR2/kmazxJbpUEfQ/Dm/UG7wVwHkjlQdMFfDdJMFaACebnjJGyDWgcnZu1/lrCrl6NCoEHJBrDwEr5NrT6ko/UV8xdLAC2N49mlc5CylpYh8wCwqrvbBGLoKGvz8Bfq0QPWEUo/EAAAAASUVORK5CYII=";
+  const appIcon = nativeImage.createFromDataURL(iconData);
+
+  tray = new Tray(appIcon);
+  const contextMenu = Menu.buildFromTemplate([
+    { label: "Show Window", click: () => createWindow() },
+    { type: "separator" },
+    { role: "quit", label: "Exit" },
+  ]);
+
+  tray.setContextMenu(contextMenu);
+  showNotification();
+
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") {
     app.quit();
   }
 });
-
-// In this file you can include the rest of your app's specific main process
-// code. You can also put them in separate files and import them here.

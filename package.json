@@ -19,6 +19,7 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@nut-tree-fork/nut-js": "^4.2.6",
     "electron-squirrel-startup": "^1.0.1"
   },
   "devDependencies": {
